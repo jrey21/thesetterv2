@@ -15,8 +15,7 @@ export async function sendMessage(conversationId: string, text: string) {
 
     if (!conv) throw new Error('Conversation not found');
 
-    // Get a valid Access Token (Using the first available one for simplicity)
-    // In a production app with multiple business accounts, you'd filter by the specific account ID
+    // Get a valid Access Token
     const { data: acc } = await supabaseAdmin
       .from('instagram_accounts')
       .select('access_token')
@@ -54,7 +53,7 @@ export async function sendMessage(conversationId: string, text: string) {
   }
 }
 
-// 2. Fetch Real Name & Profile Pic (Fixes "User 178...")
+// 2. Fetch Real Name, Profile Pic & BIO
 export async function refreshContactInfo(instagramUserId: string) {
   try {
     // Get Access Token
@@ -66,21 +65,22 @@ export async function refreshContactInfo(instagramUserId: string) {
     
     if (!acc) return;
 
-    // Ask Meta who this user is
+    // Ask Meta for username, profile pic, AND biography
     const response = await axios.get(`https://graph.facebook.com/v21.0/${instagramUserId}`, {
         params: {
-            fields: 'username,profile_picture_url', // The specific fields we want
+            fields: 'username,profile_picture_url,biography', // <--- Added biography request here
             access_token: acc.access_token
         }
     });
 
-    const { username, profile_picture_url } = response.data;
+    const { username, profile_picture_url, biography } = response.data;
 
     // Update our database with the real info
     await supabaseAdmin.from('conversations')
         .update({ 
             username: username, 
-            profile_pic_url: profile_picture_url 
+            profile_pic_url: profile_picture_url,
+            bio: biography // <--- Save biography to your new database column
         })
         .eq('instagram_user_id', instagramUserId);
 
