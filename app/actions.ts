@@ -3,31 +3,89 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import axios from 'axios';
 
+// 1. Send a Reply
 export async function sendMessage(conversationId: string, text: string) {
-  // 1. Get Recipient ID
-  const { data: conv } = await supabaseAdmin
-    .from('conversations')
-    .select('instagram_user_id')
-    .eq('id', conversationId)
-    .single();
+  try {
+    // Get Recipient ID from our DB
+    const { data: conv } = await supabaseAdmin
+      .from('conversations')
+      .select('instagram_user_id')
+      .eq('id', conversationId)
+      .single();
 
-  // 2. Get Access Token (Simplification: grabbing the first one. In real app, match to user)
-  const { data: acc } = await supabaseAdmin.from('instagram_accounts').select('access_token').limit(1).single();
+    if (!conv) throw new Error('Conversation not found');
 
-  if (!conv || !acc) throw new Error('No data');
+    // Get a valid Access Token (Using the first available one for simplicity)
+    // In a production app with multiple business accounts, you'd filter by the specific account ID
+    const { data: acc } = await supabaseAdmin
+      .from('instagram_accounts')
+      .select('access_token')
+      .limit(1)
+      .single();
 
-  // 3. Send to API
-  await axios.post(`https://graph.instagram.com/v21.0/me/messages`, {
-    recipient: { id: conv.instagram_user_id },
-    message: { text: text },
-    tag: 'HUMAN_AGENT' // Required to bypass 24h window
-  }, { params: { access_token: acc.access_token } });
+    if (!acc) throw new Error('No Instagram account connected');
 
-  // 4. Save to DB (So it shows in our UI)
-  await supabaseAdmin.from('messages').insert({
-    conversation_id: conversationId,
-    sender_id: 'me',
-    message_text: text,
-    is_from_me: true
-  });
+    // Send to Meta/Instagram Graph API
+    await axios.post(`https://graph.facebook.com/v21.0/me/messages`, {
+      recipient: { id: conv.instagram_user_id },
+      message: { text: text },
+      tag: 'HUMAN_AGENT' // Required to bypass the 24h standard messaging window
+    }, { 
+      params: { access_token: acc.access_token } 
+    });
+
+    // Save the message to our database so it shows in the UI instantly
+    await supabaseAdmin.from('messages').insert({
+      conversation_id: conversationId,
+      sender_id: 'me',
+      message_text: text,
+      is_from_me: true
+    });
+
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      console.error('SendMessage Error:', error.response?.data || error.message);
+    } else if (error instanceof Error) {
+      console.error('SendMessage Error:', error.message);
+    } else {
+      console.error('SendMessage Error:', error);
+    }
+    throw new Error('Failed to send message');
+  }
+}
+
+// 2. Fetch Real Name & Profile Pic (Fixes "User 178...")
+export async function refreshContactInfo(instagramUserId: string) {
+  try {
+    // Get Access Token
+    const { data: acc } = await supabaseAdmin
+      .from('instagram_accounts')
+      .select('access_token')
+      .limit(1)
+      .single();
+    
+    if (!acc) return;
+
+    // Ask Meta who this user is
+    const response = await axios.get(`https://graph.facebook.com/v21.0/${instagramUserId}`, {
+        params: {
+            fields: 'username,profile_picture_url', // The specific fields we want
+            access_token: acc.access_token
+        }
+    });
+
+    const { username, profile_picture_url } = response.data;
+
+    // Update our database with the real info
+    await supabaseAdmin.from('conversations')
+        .update({ 
+            username: username, 
+            profile_pic_url: profile_picture_url 
+        })
+        .eq('instagram_user_id', instagramUserId);
+
+    console.log(`Updated contact info for ${username}`);
+  } catch (error) {
+    console.error('Failed to refresh contact info:', error);
+  }
 }
