@@ -1,77 +1,63 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { NextResponse } from 'next/server';
+import axios from 'axios';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  if (searchParams.get('hub.verify_token') === process.env.VERIFY_TOKEN) {
-    return new NextResponse(searchParams.get('hub.challenge'), { status: 200 });
-  }
-  return new NextResponse('Forbidden', { status: 403 });
-}
+  const code = searchParams.get('code');
 
-export async function POST(req: Request) {
+  if (!code) return NextResponse.json({ error: 'No code provided' }, { status: 400 });
+
   try {
-    const body = await req.json();
+    const clientId = process.env.NEXT_PUBLIC_META_APP_ID!;
+    const clientSecret = process.env.META_APP_SECRET!;
+    const redirectUri = `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`;
 
-    if (body.object === 'instagram') {
-      for (const entry of body.entry) {
-        // The 'id' on the entry level is ALWAYS the Business Account ID receiving the webhook
-        const myBusinessId = entry.id; 
-        
-        const messagingEvents = entry.messaging || entry.standby || [];
-        
-        for (const event of messagingEvents) {
-          if (!event.message) continue;
+    // 1. Exchange Code for Access Token
+    const tokenRes = await axios.get('https://graph.facebook.com/v21.0/oauth/access_token', {
+      params: {
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        client_secret: clientSecret,
+        code: code,
+      },
+    });
 
-          const senderId = event.sender.id;
-          const recipientId = event.recipient.id;
-          const text = event.message.text;
-          
-          let conversationPartnerId;
-          let isFromMe = false;
+    const accessToken = tokenRes.data.access_token;
 
-          // --- SMART LOGIC STARTS HERE ---
-          // Check: Did *I* send this message?
-          if (senderId === myBusinessId) {
-            // Yes, I sent it. The "Partner" is the Recipient (The Customer)
-            conversationPartnerId = recipientId;
-            isFromMe = true;
-          } else {
-            // No, someone else sent it. The "Partner" is the Sender (The Customer)
-            conversationPartnerId = senderId;
-            isFromMe = false;
-          }
+    // 2. Get User Info
+    const meRes = await axios.get('https://graph.facebook.com/v21.0/me', {
+      params: {
+        fields: 'id,name',
+        access_token: accessToken,
+      },
+    });
 
-          // 1. Find or Create Conversation for the CUSTOMER (Partner ID)
-          const { data: conv, error: convError } = await supabaseAdmin
-            .from('conversations')
-            .upsert({ 
-                instagram_user_id: conversationPartnerId 
-            }, { onConflict: 'instagram_user_id' })
-            .select()
-            .single();
-          
-          if (convError) {
-             console.error('Error upserting conversation:', convError);
-             continue;
-          }
+    const userId = meRes.data.id;
+    const userName = meRes.data.name;
 
-          // 2. Insert the Message into THAT conversation
-          if (conv) {
-            await supabaseAdmin.from('messages').insert({
-              conversation_id: conv.id,
-              sender_id: senderId,
-              message_text: text || '(Media)',
-              is_from_me: isFromMe
-            });
-          }
-        }
-      }
-      return new NextResponse('EVENT_RECEIVED', { status: 200 });
+    // 3. Save to Supabase
+    const { error } = await supabaseAdmin.from('instagram_accounts').upsert({
+      instagram_user_id: userId, 
+      access_token: accessToken,
+      username: userName,
+    }, { onConflict: 'instagram_user_id' });
+
+    if (error) throw error;
+
+    // 4. Redirect to Dashboard
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`);
+
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      console.error('Callback Error:', error.response?.data || error.message);
+    } else if (error instanceof Error) {
+      console.error('Callback Error:', error.message);
+    } else {
+      console.error('Callback Error:', error);
     }
-    return new NextResponse('Not Found', { status: 404 });
-  } catch (error) {
-    console.error('Webhook Error:', error);
-    return new NextResponse('Server Error', { status: 500 });
+    return NextResponse.json({ error: 'Login Failed' }, { status: 500 });
   }
 }
