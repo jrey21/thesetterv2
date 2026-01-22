@@ -51,13 +51,12 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`);
 
   } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      console.error('Callback Error:', error.response?.data || error.message);
-    } else if (error instanceof Error) {
-      console.error('Callback Error:', error.message);
-    } else {
-      console.error('Callback Error:', error);
-    }
-    return NextResponse.json({ error: 'Login Failed' }, { status: 500 });
+    console.error('Callback Error:', error.response?.data || error.message);
+    
+    // UPDATED: This will now show the REAL error on your screen
+    return NextResponse.json({ 
+        error: 'Login Failed', 
+        details: error.response?.data || error.message 
+    }, { status: 500 });
   }
 }
