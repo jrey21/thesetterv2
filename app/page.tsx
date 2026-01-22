@@ -5,8 +5,8 @@ export default function Home() {
     const appId = process.env.NEXT_PUBLIC_META_APP_ID;
     const redirectUri = `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`;
     
-    // CRITICAL: Using Facebook OAuth for Business Apps
-    const authUrl = `https://www.facebook.com/v20.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_manage_messages,pages_manage_metadata,pages_read_engagement,pages_show_list&response_type=code`;
+    // UPDATED SCOPE: Removed "pages_manage_metadata"
+    const authUrl = `https://www.facebook.com/v20.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_manage_messages,pages_read_engagement,pages_show_list&response_type=code`;
     
     window.location.href = authUrl;
   };
