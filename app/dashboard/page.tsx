@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import Image from 'next/image';
+// REMOVED: import Image from 'next/image'; (We use standard <img> now)
 import { supabase } from '@/lib/supabase';
 import { sendMessage, refreshContactInfo } from '../actions';
 import { Search, Phone, Video, MoreVertical, Paperclip, Mic, Send, Star } from 'lucide-react';
@@ -28,7 +28,6 @@ export default function Dashboard() {
   const [input, setInput] = useState('');
   
   const msgsEndRef = useRef<HTMLDivElement>(null);
-  // SAFETY: This Set remembers who we already tried to fetch, so we don't spam API
   const fetchedUsersRef = useRef<Set<string>>(new Set());
 
   // 1. Load Conversations
@@ -47,11 +46,10 @@ export default function Dashboard() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // 2. Load Messages & SAFELY Fetch Profile Info
+  // 2. Load Messages & Fetch Info
   useEffect(() => {
     if (!activeChat) return;
 
-    // Fetch messages
     const fetchMessages = async () => {
       const { data } = await supabase.from('messages').select('*').eq('conversation_id', activeChat).order('created_at', { ascending: true });
       if (data) setMessages(data);
@@ -59,23 +57,17 @@ export default function Dashboard() {
 
     fetchMessages();
 
-    // Realtime listener for new messages
     const channel = supabase.channel(`chat_${activeChat}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${activeChat}` }, 
         (payload) => setMessages(prev => [...prev, payload.new as Message]))
       .subscribe();
       
-    // SAFETY CHECK: Only fetch info if we haven't tried yet
+    // Fetch Contact Info Logic
     const currentChat = chats.find(c => c.id === activeChat);
     if (currentChat && !currentChat.username && !fetchedUsersRef.current.has(currentChat.instagram_user_id)) {
-        
-        // Mark as fetched immediately to block loops
         fetchedUsersRef.current.add(currentChat.instagram_user_id);
-        
         console.log("Fetching info for:", currentChat.instagram_user_id);
-        
         refreshContactInfo(currentChat.instagram_user_id).then(() => {
-            // Reload chats to show new name
             supabase.from('conversations').select('*').order('last_message_at', { ascending: false })
               .then(({data}) => setChats(data || []));
         });
@@ -122,13 +114,11 @@ export default function Dashboard() {
               onClick={() => setActiveChat(chat.id)} 
               className={`p-4 flex gap-3 cursor-pointer border-b border-gray-100 hover:bg-gray-100 transition-colors ${activeChat === chat.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''}`}
             >
-              <Image
+              {/* FIXED: Standard img tag */}
+              <img
                 src={chat.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
                 alt="Avatar"
-                width={48}
-                height={48}
                 className="w-12 h-12 rounded-full object-cover border border-gray-200"
-                unoptimized={chat.profile_pic_url?.startsWith('http') ? false : true}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-baseline mb-1">
@@ -151,13 +141,11 @@ export default function Dashboard() {
         <div className="flex-1 flex flex-col bg-white">
           <div className="h-16 border-b flex items-center justify-between px-6 bg-white shadow-sm z-10">
             <div className="flex items-center gap-3">
-              <Image
+              {/* FIXED: Standard img tag */}
+              <img
                 src={activeChatDetails?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
-                alt={activeChatDetails?.username ? `${activeChatDetails.username}'s profile picture` : "User profile picture"}
-                width={40}
-                height={40}
+                alt="Profile"
                 className="w-10 h-10 rounded-full object-cover"
-                unoptimized={activeChatDetails?.profile_pic_url?.startsWith('http') ? false : true}
               />
               <div>
                 <h2 className="font-bold text-gray-800">{activeChatDetails?.username || "Unknown User"}</h2>
@@ -177,13 +165,11 @@ export default function Dashboard() {
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'} group`}>
                 {!m.is_from_me && (
-                   <Image
+                   /* FIXED: Standard img tag */
+                   <img
                     src={activeChatDetails?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
-                    alt={activeChatDetails?.username ? `${activeChatDetails.username}'s profile picture` : "User profile picture"}
-                    width={32}
-                    height={32}
+                    alt="Profile"
                     className="w-8 h-8 rounded-full mr-2 self-end mb-1"
-                    unoptimized={activeChatDetails?.profile_pic_url?.startsWith('http') ? false : true}
                    />
                 )}
                 <div className={`max-w-[70%] p-3 rounded-2xl shadow-sm text-sm leading-relaxed relative ${
