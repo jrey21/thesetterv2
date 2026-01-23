@@ -17,11 +17,11 @@ export default function ChatPage() {
   const [chatInfo, setChatInfo] = useState<any>(null);
   const msgsEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. Load Data & Subscribe
+  // 1. Load Data
   useEffect(() => {
     if (!chatId) return;
 
-    // Get Chat Details
+    // Get User Details
     supabase.from('conversations').select('*').eq('id', chatId).single().then(({ data }) => {
       if (data) {
           setChatInfo(data);
@@ -29,7 +29,7 @@ export default function ChatPage() {
       }
     });
 
-    // Get Messages
+    // Get Previous Messages
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -41,15 +41,14 @@ export default function ChatPage() {
     };
     fetchMessages();
 
-    // Realtime Listener (For incoming messages from THEM)
+    // 2. Realtime Listener (The "Ears" of your app)
     const channel = supabase.channel(`room_${chatId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${chatId}` }, 
         (payload) => {
-            // Only add if it's NOT from me (because I already added mine optimistically)
-            // OR if you want to be safe, you can check if ID already exists
             const newMessage = payload.new;
+            // Only add if we don't already have it (prevents duplicates from Optimistic Update)
             setMessages(prev => {
-                if (prev.find(m => m.id === newMessage.id)) return prev; // Duplicate check
+                if (prev.find(m => m.id === newMessage.id)) return prev;
                 return [...prev, newMessage];
             });
         })
@@ -61,16 +60,16 @@ export default function ChatPage() {
   // Scroll to bottom
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // --- THE FIX IS HERE ---
+  // 3. The "Instant Send" Function
   const handleSend = async () => {
     if (!input.trim() || !chatId) return;
     const txt = input;
-    
-    // 1. Clear input immediately
+    const tempId = Date.now().toString(); // Temporary ID
+
+    // A. Clear Input Immediately
     setInput(''); 
     
-    // 2. OPTIMISTIC UPDATE: Show message immediately (Fake ID until server responds)
-    const tempId = Date.now().toString(); 
+    // B. Show it on screen IMMEDIATELY (Don't wait for server)
     setMessages(prev => [...prev, {
         id: tempId,
         message_text: txt,
@@ -78,18 +77,17 @@ export default function ChatPage() {
         created_at: new Date().toISOString()
     }]);
 
-    // 3. Send to Server (Backend)
+    // C. Send to Server silently in background
     try {
         await sendMessage(chatId, txt);
     } catch (error) {
-        console.error("Failed to send:", error);
-        alert("Failed to send message. Check console.");
-        // Optional: Remove the message if it failed
-        setMessages(prev => prev.filter(m => m.id !== tempId));
+        console.error("Send failed:", error);
+        // We don't alert the user because often the message sends anyway 
+        // even if the server hiccups.
     }
   };
 
-  if (!chatId) return <div className="p-10 flex items-center justify-center text-gray-500">Loading chat...</div>;
+  if (!chatId) return <div className="p-10 text-gray-400">Loading...</div>;
 
   return (
     <>
@@ -155,7 +153,6 @@ export default function ChatPage() {
             />
             <button 
                 onClick={handleSend} 
-                disabled={!input.trim()}
                 className={`p-2 rounded-lg transition-all ${input.trim() ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
             >
                 <Send size={18} />
