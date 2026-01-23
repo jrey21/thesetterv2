@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { sendMessage, refreshContactInfo } from '@/app/actions';
+import { sendMessage } from '@/app/actions';
 import { useParams } from 'next/navigation';
 import { 
     Phone, Video, Paperclip, Mic, Send, 
@@ -16,6 +16,13 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [chatInfo, setChatInfo] = useState<any>(null);
   const msgsEndRef = useRef<HTMLDivElement>(null);
+
+  // Dummy implementation for refreshContactInfo
+  const refreshContactInfo = async (instagramUserId: string) => {
+    // TODO: Implement actual logic to fetch and update contact info
+    // For now, just log to console
+    console.log('refreshContactInfo called with:', instagramUserId);
+  };
 
   // 1. Load Data & Subscribe to Realtime Updates
   useEffect(() => {
