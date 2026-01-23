@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-// REMOVED: import Image from 'next/image'; (We use standard <img> now)
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { sendMessage, refreshContactInfo } from '../actions';
 import { Search, Phone, Video, MoreVertical, Paperclip, Mic, Send, Star } from 'lucide-react';
@@ -89,20 +89,20 @@ export default function Dashboard() {
   const activeChatDetails = chats.find(c => c.id === activeChat);
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden font-sans">
       {/* LEFT SIDEBAR */}
-      <div className="w-80 border-r flex flex-col bg-gray-50">
-        <div className="p-4 border-b bg-white">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="font-bold text-xl text-gray-800">Inbox</h1>
-            <MoreVertical size={20} className="text-gray-600 cursor-pointer"/>
+      <div className="w-80 border-r flex flex-col bg-gray-50/50">
+        <div className="p-5 border-b bg-white">
+          <div className="flex items-center justify-between mb-5">
+            <h1 className="font-bold text-2xl text-gray-800 tracking-tight">Inbox</h1>
+            <MoreVertical size={20} className="text-gray-400 cursor-pointer hover:text-gray-600"/>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
             <input 
               type="text" 
               placeholder="Search..." 
-              className="w-full bg-gray-100 pl-10 pr-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-gray-100 pl-10 pr-4 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
             />
           </div>
         </div>
@@ -112,24 +112,25 @@ export default function Dashboard() {
             <div 
               key={chat.id} 
               onClick={() => setActiveChat(chat.id)} 
-              className={`p-4 flex gap-3 cursor-pointer border-b border-gray-100 hover:bg-gray-100 transition-colors ${activeChat === chat.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''}`}
+              className={`p-4 flex gap-3 cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition-colors ${activeChat === chat.id ? 'bg-indigo-50/50 border-l-4 border-l-indigo-500' : ''}`}
             >
-              {/* FIXED: Standard img tag */}
               <img
                 src={chat.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
                 alt="Avatar"
-                className="w-12 h-12 rounded-full object-cover border border-gray-200"
+                className="w-12 h-12 rounded-full object-cover border border-gray-100"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-baseline mb-1">
-                  <h3 className="font-semibold text-gray-800 truncate">
+                  <h3 className={`font-semibold truncate ${activeChat === chat.id ? 'text-indigo-900' : 'text-gray-800'}`}>
                     {chat.username || `User ${chat.instagram_user_id.slice(0,4)}...`}
                   </h3>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 font-medium">
                     {new Date(chat.last_message_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 truncate">Click to view chat</p>
+                <p className={`text-sm truncate ${activeChat === chat.id ? 'text-indigo-600/70' : 'text-gray-500'}`}>
+                    View conversation
+                </p>
               </div>
             </div>
           ))}
@@ -139,44 +140,54 @@ export default function Dashboard() {
       {/* RIGHT CHAT AREA */}
       {activeChat ? (
         <div className="flex-1 flex flex-col bg-white">
-          <div className="h-16 border-b flex items-center justify-between px-6 bg-white shadow-sm z-10">
-            <div className="flex items-center gap-3">
-              {/* FIXED: Standard img tag */}
+          {/* Header */}
+          <div className="h-20 border-b flex items-center justify-between px-8 bg-white z-10 shadow-sm">
+            <div className="flex items-center gap-4">
               <img
                 src={activeChatDetails?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
                 alt="Profile"
-                className="w-10 h-10 rounded-full object-cover"
+                className="w-12 h-12 rounded-full object-cover border border-gray-100"
               />
               <div>
-                <h2 className="font-bold text-gray-800">{activeChatDetails?.username || "Unknown User"}</h2>
-                <div className="text-xs text-green-600 font-medium flex items-center gap-1">
-                    <span className="w-2 h-2 bg-green-500 rounded-full"></span> Active now
+                <h2 className="font-bold text-lg text-gray-900 leading-tight">{activeChatDetails?.username || "Unknown User"}</h2>
+                <div className="text-xs text-green-600 font-medium flex items-center gap-1.5 mt-0.5">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Active now
                 </div>
               </div>
             </div>
-            <div className="flex gap-4 text-gray-400">
-                <Phone className="hover:text-blue-600 cursor-pointer" size={20} />
-                <Video className="hover:text-blue-600 cursor-pointer" size={20} />
-                <Star className="hover:text-yellow-400 cursor-pointer" size={20} />
+            <div className="flex gap-6 text-gray-400">
+                <Phone className="hover:text-indigo-600 cursor-pointer transition-colors" size={20} />
+                <Video className="hover:text-indigo-600 cursor-pointer transition-colors" size={20} />
+                <Star className="hover:text-yellow-400 cursor-pointer transition-colors" size={20} />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 bg-gray-50 flex flex-col gap-3">
+          {/* Messages List */}
+          <div className="flex-1 overflow-y-auto p-8 bg-white flex flex-col gap-4">
             {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'} group`}>
+              <div key={m.id} className={`flex w-full ${m.is_from_me ? 'justify-end' : 'justify-start'} group`}>
+                
+                {/* Recipient Avatar */}
                 {!m.is_from_me && (
-                   /* FIXED: Standard img tag */
-                   <img
-                    src={activeChatDetails?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
-                    alt="Profile"
-                    className="w-8 h-8 rounded-full mr-2 self-end mb-1"
-                   />
+                   <div className="flex-shrink-0 mr-3 self-end">
+                      <img
+                       src={activeChatDetails?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
+                       alt="Profile"
+                       className="w-8 h-8 rounded-full object-cover"
+                      />
+                   </div>
                 )}
-                <div className={`max-w-[70%] p-3 rounded-2xl shadow-sm text-sm leading-relaxed relative ${
-                  m.is_from_me 
-                    ? 'bg-blue-600 text-white rounded-br-none' 
-                    : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
-                }`}>
+
+                {/* Message Bubble */}
+                <div 
+                  className={`
+                    max-w-[65%] px-5 py-3 text-[15px] leading-relaxed shadow-sm
+                    ${m.is_from_me 
+                      ? 'bg-indigo-500 text-white rounded-3xl rounded-br-md' 
+                      : 'bg-gray-100 text-gray-800 rounded-3xl rounded-bl-md' 
+                    }
+                  `}
+                >
                   {m.message_text}
                 </div>
               </div>
@@ -184,26 +195,42 @@ export default function Dashboard() {
             <div ref={msgsEndRef} />
           </div>
 
-          <div className="p-4 bg-white border-t">
-            <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-blue-100">
-                <Paperclip className="text-gray-400 hover:text-gray-600 cursor-pointer" size={20} />
+          {/* Input Area */}
+          <div className="p-6 bg-white">
+            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-300 transition-all">
+                <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors">
+                   <Paperclip size={20} />
+                </button>
+                
                 <input 
-                    className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400" 
+                    className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400 px-2" 
                     placeholder="Write a message..." 
                     value={input} 
                     onChange={e => setInput(e.target.value)} 
                     onKeyDown={e => e.key === 'Enter' && handleSend()} 
                 />
-                <Mic className="text-gray-400 hover:text-gray-600 cursor-pointer" size={20} />
-                <button onClick={handleSend} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md">
-                    <Send size={18} />
+                
+                <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors">
+                    <Mic size={20} />
+                </button>
+
+                <button 
+                  onClick={handleSend} 
+                  className="p-3 bg-indigo-500 text-white rounded-full hover:bg-indigo-600 shadow-md transition-transform active:scale-95 flex items-center justify-center"
+                >
+                    <Send size={18} className="ml-0.5" />
                 </button>
             </div>
           </div>
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
-            <p>Select a chat to start messaging</p>
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <div className="w-3 h-3 bg-gray-300 rounded-full mx-1"></div>
+                <div className="w-3 h-3 bg-gray-300 rounded-full mx-1"></div>
+                <div className="w-3 h-3 bg-gray-300 rounded-full mx-1"></div>
+            </div>
+            <p className="font-medium text-gray-500">Select a chat to start messaging</p>
         </div>
       )}
     </div>
