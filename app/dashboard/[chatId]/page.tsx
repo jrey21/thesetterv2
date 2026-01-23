@@ -2,26 +2,26 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { sendMessage, refreshContactInfo } from '@/app/actions';
-import { useParams } from 'next/navigation'; // <--- THIS IS THE KEY FIX
+import { useParams } from 'next/navigation';
 import { 
-    Phone, Video, Star, Paperclip, Mic, Send, 
+    Phone, Video, Paperclip, Send, 
     MoreHorizontal, Bell, Info, Clock, MapPin, CheckCircle
 } from 'lucide-react';
 
 export default function ChatPage() {
   const params = useParams(); 
-  const chatId = params?.chatId as string; // Safer way to get ID
+  const chatId = params?.chatId as string;
 
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [chatInfo, setChatInfo] = useState<any>(null);
   const msgsEndRef = useRef<HTMLDivElement>(null);
 
-  // Load Data
+  // 1. Load Data & Subscribe to Realtime Updates
   useEffect(() => {
     if (!chatId) return;
 
-    // 1. Get Chat Details
+    // A. Get Chat Details (Name, Pic, Bio)
     supabase.from('conversations').select('*').eq('id', chatId).single().then(({ data }) => {
       if (data) {
           setChatInfo(data);
@@ -30,7 +30,7 @@ export default function ChatPage() {
       }
     });
 
-    // 2. Get Messages
+    // B. Get Existing Messages
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -42,41 +42,42 @@ export default function ChatPage() {
     };
     fetchMessages();
 
-    // 3. Realtime Listener
+    // C. REALTIME LISTENER (This handles Sending AND Receiving)
     const channel = supabase.channel(`room_${chatId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${chatId}` }, 
-        (payload) => setMessages(prev => [...prev, payload.new]))
+        (payload) => {
+            // When a new message arrives (from YOU or THEM), add it to the list
+            setMessages(prev => [...prev, payload.new]);
+        })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [chatId]);
 
-  // Scroll to bottom
+  // Scroll to bottom whenever messages change
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const handleSend = async () => {
     if (!input.trim() || !chatId) return;
     const txt = input;
-    setInput('');
-    // Optimistic Update: Show message immediately
-    setMessages(prev => [...prev, {
-        id: Date.now().toString(), // temp id
-        message_text: txt,
-        is_from_me: true,
-        created_at: new Date().toISOString()
-    }]);
     
+    // 1. Clear input immediately
+    setInput(''); 
+    
+    // 2. Send to Backend (This sends to Instagram AND saves to DB)
+    // We don't manually update the list here because the 'Realtime Listener' above 
+    // will see the new DB row and update the screen automatically.
     await sendMessage(chatId, txt);
   };
 
-  if (!chatId) return <div className="p-10">Loading...</div>;
+  if (!chatId) return <div className="p-10 flex items-center justify-center text-gray-500">Loading chat...</div>;
 
   return (
     <>
     {/* MIDDLE COLUMN: Chat Area */}
     <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] border-r border-gray-200">
       
-      {/* Chat Header */}
+      {/* Header */}
       <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white flex-shrink-0 shadow-sm z-10">
         <div className="flex items-center gap-3">
            <img 
@@ -92,16 +93,16 @@ export default function ChatPage() {
            </div>
         </div>
         <div className="flex gap-1">
-             <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Phone size={18}/></button>
-             <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Video size={18}/></button>
-             <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"><MoreHorizontal size={18}/></button>
+             <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Phone size={18}/></button>
+             <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Video size={18}/></button>
+             <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg"><MoreHorizontal size={18}/></button>
         </div>
       </div>
 
       {/* Messages List */}
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-3 scroll-smooth">
         {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+          <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1 duration-300`}>
             <div className={`flex flex-col max-w-[70%] ${m.is_from_me ? 'items-end' : 'items-start'}`}>
                 {/* Message Bubble */}
                 <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-[15px] leading-relaxed ${
@@ -127,7 +128,7 @@ export default function ChatPage() {
       {/* Input Area */}
       <div className="p-4 bg-white border-t border-gray-200">
         <div className="flex items-center gap-2 bg-white rounded-xl px-2 py-2 border border-gray-200 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 shadow-sm transition-all">
-            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"><Paperclip size={20} /></button>
+            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg"><Paperclip size={20} /></button>
             <input 
                 className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400 h-9 text-sm" 
                 placeholder="Write a message..." 
@@ -135,10 +136,10 @@ export default function ChatPage() {
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()} 
             />
-            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"><Mic size={20} /></button>
             <button 
                 onClick={handleSend} 
-                className={`p-2 rounded-lg transition-all ${input.trim() ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-400'}`}
+                disabled={!input.trim()}
+                className={`p-2 rounded-lg transition-all ${input.trim() ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
             >
                 <Send size={18} />
             </button>
@@ -157,21 +158,18 @@ export default function ChatPage() {
             <p className="text-sm text-gray-500 mb-4">Instagram Lead</p>
             
             <div className="flex gap-2 w-full">
-                <button className="flex-1 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-100 transition-colors border border-gray-200">View Profile</button>
+                <button className="flex-1 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-100 border border-gray-200">View Profile</button>
                 <button className="p-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"><Bell size={18}/></button>
             </div>
         </div>
 
         <div className="p-5 space-y-6">
-            {/* Bio Section */}
             <div>
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">About</h4>
                 <div className="text-sm text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    {chatInfo?.bio ? chatInfo.bio : <span className="italic text-gray-400">No biography available.</span>}
+                    {chatInfo?.bio || <span className="italic text-gray-400">No biography available.</span>}
                 </div>
             </div>
-
-            {/* Details */}
             <div>
                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Details</h4>
                  <div className="space-y-3">
@@ -189,15 +187,6 @@ export default function ChatPage() {
                     </div>
                  </div>
             </div>
-
-             {/* Tags */}
-             <div>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Tags</h4>
-                <div className="flex flex-wrap gap-2">
-                    <span className="px-2.5 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-100">New Lead</span>
-                    <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full font-medium border border-blue-100">Instagram</span>
-                </div>
-             </div>
         </div>
     </div>
     </>
