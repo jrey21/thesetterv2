@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { sendMessage, refreshContactInfo } from '@/app/actions';
 import { useParams } from 'next/navigation';
 import { 
-    Phone, Video, Star, Paperclip, Mic, Send, 
+    Phone, Video, Paperclip, Mic, Send, 
     MoreHorizontal, Bell, Info, Clock, MapPin, CheckCircle
 } from 'lucide-react';
 
@@ -17,19 +17,20 @@ export default function ChatPage() {
   const [chatInfo, setChatInfo] = useState<any>(null);
   const msgsEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. Load Data
+  // 1. Load Data & Subscribe to Realtime Updates
   useEffect(() => {
     if (!chatId) return;
 
-    // Get User Details
+    // A. Get Chat Details (Name, Pic, Bio)
     supabase.from('conversations').select('*').eq('id', chatId).single().then(({ data }) => {
       if (data) {
           setChatInfo(data);
+          // If name is missing, try to fetch it from Instagram
           if (!data.username) refreshContactInfo(data.instagram_user_id); 
       }
     });
 
-    // Get Previous Messages
+    // B. Get Existing Messages
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -41,14 +42,14 @@ export default function ChatPage() {
     };
     fetchMessages();
 
-    // 2. Realtime Listener (The "Ears" of your app)
+    // C. REALTIME LISTENER (Handles incoming messages from THEM)
     const channel = supabase.channel(`room_${chatId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${chatId}` }, 
         (payload) => {
             const newMessage = payload.new;
-            // Only add if we don't already have it (prevents duplicates from Optimistic Update)
+            // Only add if it's NOT from me (or if I don't have it yet)
             setMessages(prev => {
-                if (prev.find(m => m.id === newMessage.id)) return prev;
+                if (prev.find(m => m.id === newMessage.id)) return prev; 
                 return [...prev, newMessage];
             });
         })
@@ -60,16 +61,14 @@ export default function ChatPage() {
   // Scroll to bottom
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // 3. The "Instant Send" Function
+  // 2. The "Safe" Handle Send Function
   const handleSend = async () => {
     if (!input.trim() || !chatId) return;
     const txt = input;
-    const tempId = Date.now().toString(); // Temporary ID
+    const tempId = Date.now().toString(); // Temporary ID for optimistic update
 
-    // A. Clear Input Immediately
+    // A. Clear Input & Show Message IMMEDIATELY (Optimistic UI)
     setInput(''); 
-    
-    // B. Show it on screen IMMEDIATELY (Don't wait for server)
     setMessages(prev => [...prev, {
         id: tempId,
         message_text: txt,
@@ -77,17 +76,24 @@ export default function ChatPage() {
         created_at: new Date().toISOString()
     }]);
 
-    // C. Send to Server silently in background
+    // B. Send to Server (and handle potential failure)
     try {
-        await sendMessage(chatId, txt);
-    } catch (error) {
-        console.error("Send failed:", error);
-        // We don't alert the user because often the message sends anyway 
-        // even if the server hiccups.
+        const result = await sendMessage(chatId, txt);
+
+        // If the server says "Failed", show the error and remove the message
+        if (!result || !result.success) {
+            console.error("Server reported error:", result?.error);
+            alert(`Message Failed: ${result?.error || 'Unknown Error'}`);
+            setMessages(prev => prev.filter(m => m.id !== tempId)); // Rollback
+        }
+    } catch (error: any) {
+        console.error("Critical Send Error:", error);
+        alert("Critical Error: Failed to reach server.");
+        setMessages(prev => prev.filter(m => m.id !== tempId)); // Rollback
     }
   };
 
-  if (!chatId) return <div className="p-10 text-gray-400">Loading...</div>;
+  if (!chatId) return <div className="p-10 flex items-center justify-center text-gray-500">Loading chat...</div>;
 
   return (
     <>
@@ -100,6 +106,7 @@ export default function ChatPage() {
            <img 
             src={chatInfo?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"} 
             className="w-10 h-10 rounded-full object-cover border border-gray-100" 
+            alt="Profile"
            />
            <div>
              <h2 className="font-bold text-gray-900 text-sm">{chatInfo?.username || "Loading..."}</h2>
@@ -121,6 +128,7 @@ export default function ChatPage() {
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1 duration-300`}>
             <div className={`flex flex-col max-w-[70%] ${m.is_from_me ? 'items-end' : 'items-start'}`}>
+                {/* Message Bubble */}
                 <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-[15px] leading-relaxed ${
                     m.is_from_me 
                         ? 'bg-blue-600 text-white rounded-br-none' 
@@ -128,6 +136,7 @@ export default function ChatPage() {
                     }`}>
                     {m.message_text}
                 </div>
+                {/* Time Stamp */}
                 <div className="flex items-center gap-1 mt-1 px-1">
                     <span className="text-[10px] text-gray-400">
                         {m.created_at ? new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Sending...'}
@@ -151,8 +160,10 @@ export default function ChatPage() {
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()} 
             />
+            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg"><Mic size={20} /></button>
             <button 
                 onClick={handleSend} 
+                disabled={!input.trim()}
                 className={`p-2 rounded-lg transition-all ${input.trim() ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
             >
                 <Send size={18} />
@@ -165,7 +176,11 @@ export default function ChatPage() {
     <div className="w-[300px] bg-white flex flex-col flex-shrink-0 border-l border-gray-200 h-full overflow-y-auto">
         <div className="p-6 flex flex-col items-center border-b border-gray-100 pb-6">
             <div className="relative">
-                <img src={chatInfo?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"} className="w-24 h-24 rounded-full object-cover border-4 border-gray-50 mb-3 shadow-sm" />
+                <img 
+                    src={chatInfo?.profile_pic_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"} 
+                    className="w-24 h-24 rounded-full object-cover border-4 border-gray-50 mb-3 shadow-sm"
+                    alt="Profile Large" 
+                />
                 <div className="absolute bottom-3 right-0 bg-green-500 w-5 h-5 rounded-full border-4 border-white"></div>
             </div>
             <h2 className="font-bold text-gray-900 text-lg">{chatInfo?.username || "Unknown User"}</h2>
