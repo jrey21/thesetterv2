@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const clientSecret = process.env.META_APP_SECRET!;
     const redirectUri = `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`;
 
-    // 1. Exchange Code for Access Token
+    // 1. Exchange the Login Code for a "User Access Token" (Jason's Key)
     const tokenRes = await axios.get('https://graph.facebook.com/v21.0/oauth/access_token', {
       params: {
         client_id: clientId,
@@ -25,48 +25,48 @@ export async function GET(req: Request) {
       },
     });
 
-    const accessToken = tokenRes.data.access_token;
+    const userAccessToken = tokenRes.data.access_token;
 
-    // 2. Get User Info
-    const meRes = await axios.get('https://graph.facebook.com/v21.0/me', {
+    // 2. CRITICAL STEP: Use Jason's Key to get the "Business Page Key"
+    // We ask: "Show me the accounts Jason manages and give me their TOKENS"
+    const pagesRes = await axios.get('https://graph.facebook.com/v21.0/me/accounts', {
       params: {
-        fields: 'id,name',
-        access_token: accessToken,
+        fields: 'access_token,instagram_business_account{id,username,profile_picture_url}',
+        access_token: userAccessToken,
       },
     });
 
-    const userId = meRes.data.id;
-    const userName = meRes.data.name;
+    const pages = pagesRes.data.data;
+    
+    // 3. Find the specific Page that is linked to an Instagram Business Account
+    const linkedPage = pages.find((p: any) => p.instagram_business_account);
 
-    // 3. Save to Supabase
+    if (!linkedPage) {
+       return NextResponse.json({ error: 'No Instagram Business Account found. Please make sure your Instagram is switched to "Professional" and connected to a Facebook Page.' }, { status: 400 });
+    }
+
+    // 4. Extract the BUSINESS credentials
+    const businessId = linkedPage.instagram_business_account.id;
+    const businessToken = linkedPage.access_token; // <--- THIS IS THE KEY WE NEED!
+    const username = linkedPage.instagram_business_account.username;
+
+    // 5. Save the BUSINESS Token to Supabase (Overwrite the old one)
     const { error } = await supabaseAdmin.from('instagram_accounts').upsert({
-      instagram_user_id: userId, 
-      access_token: accessToken,
-      username: userName,
+      instagram_user_id: businessId, 
+      access_token: businessToken, 
+      username: username,
     }, { onConflict: 'instagram_user_id' });
 
     if (error) throw error;
 
-    // 4. Redirect to Dashboard
+    // 6. Success! Go to Dashboard.
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`);
 
-  } catch (error: unknown) {
-    if (error && typeof error === 'object') {
-      const err = error as { response?: { data?: unknown }, message?: string };
-      console.error('Callback Error:', err.response?.data ?? err.message);
-
-      // UPDATED: This will now show the REAL error on your screen
-      return NextResponse.json({ 
-          error: 'Login Failed', 
-          details: err.response?.data ?? err.message 
-      }, { status: 500 });
-    } else {
-      console.error('Callback Error:', error);
-
-      return NextResponse.json({ 
-          error: 'Login Failed', 
-          details: String(error)
-      }, { status: 500 });
-    }
+  } catch (error: any) {
+    console.error('Callback Error:', error.response?.data || error.message);
+    return NextResponse.json({ 
+        error: 'Login Failed', 
+        details: error.response?.data || error.message 
+    }, { status: 500 });
   }
 }
