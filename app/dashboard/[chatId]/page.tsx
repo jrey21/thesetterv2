@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { sendMessage, refreshContactInfo } from '@/app/actions';
 import { useParams } from 'next/navigation';
 import { 
-    Phone, Video, Paperclip, Send, 
+    Phone, Video, Star, Paperclip, Mic, Send, 
     MoreHorizontal, Bell, Info, Clock, MapPin, CheckCircle
 } from 'lucide-react';
 
@@ -17,20 +17,19 @@ export default function ChatPage() {
   const [chatInfo, setChatInfo] = useState<any>(null);
   const msgsEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. Load Data & Subscribe to Realtime Updates
+  // 1. Load Data & Subscribe
   useEffect(() => {
     if (!chatId) return;
 
-    // A. Get Chat Details (Name, Pic, Bio)
+    // Get Chat Details
     supabase.from('conversations').select('*').eq('id', chatId).single().then(({ data }) => {
       if (data) {
           setChatInfo(data);
-          // If name is missing, try to fetch it from Instagram
           if (!data.username) refreshContactInfo(data.instagram_user_id); 
       }
     });
 
-    // B. Get Existing Messages
+    // Get Messages
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -42,21 +41,27 @@ export default function ChatPage() {
     };
     fetchMessages();
 
-    // C. REALTIME LISTENER (This handles Sending AND Receiving)
+    // Realtime Listener (For incoming messages from THEM)
     const channel = supabase.channel(`room_${chatId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${chatId}` }, 
         (payload) => {
-            // When a new message arrives (from YOU or THEM), add it to the list
-            setMessages(prev => [...prev, payload.new]);
+            // Only add if it's NOT from me (because I already added mine optimistically)
+            // OR if you want to be safe, you can check if ID already exists
+            const newMessage = payload.new;
+            setMessages(prev => {
+                if (prev.find(m => m.id === newMessage.id)) return prev; // Duplicate check
+                return [...prev, newMessage];
+            });
         })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [chatId]);
 
-  // Scroll to bottom whenever messages change
+  // Scroll to bottom
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // --- THE FIX IS HERE ---
   const handleSend = async () => {
     if (!input.trim() || !chatId) return;
     const txt = input;
@@ -64,10 +69,24 @@ export default function ChatPage() {
     // 1. Clear input immediately
     setInput(''); 
     
-    // 2. Send to Backend (This sends to Instagram AND saves to DB)
-    // We don't manually update the list here because the 'Realtime Listener' above 
-    // will see the new DB row and update the screen automatically.
-    await sendMessage(chatId, txt);
+    // 2. OPTIMISTIC UPDATE: Show message immediately (Fake ID until server responds)
+    const tempId = Date.now().toString(); 
+    setMessages(prev => [...prev, {
+        id: tempId,
+        message_text: txt,
+        is_from_me: true,
+        created_at: new Date().toISOString()
+    }]);
+
+    // 3. Send to Server (Backend)
+    try {
+        await sendMessage(chatId, txt);
+    } catch (error) {
+        console.error("Failed to send:", error);
+        alert("Failed to send message. Check console.");
+        // Optional: Remove the message if it failed
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+    }
   };
 
   if (!chatId) return <div className="p-10 flex items-center justify-center text-gray-500">Loading chat...</div>;
@@ -104,7 +123,6 @@ export default function ChatPage() {
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.is_from_me ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1 duration-300`}>
             <div className={`flex flex-col max-w-[70%] ${m.is_from_me ? 'items-end' : 'items-start'}`}>
-                {/* Message Bubble */}
                 <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-[15px] leading-relaxed ${
                     m.is_from_me 
                         ? 'bg-blue-600 text-white rounded-br-none' 
@@ -112,7 +130,6 @@ export default function ChatPage() {
                     }`}>
                     {m.message_text}
                 </div>
-                {/* Time Stamp */}
                 <div className="flex items-center gap-1 mt-1 px-1">
                     <span className="text-[10px] text-gray-400">
                         {m.created_at ? new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Sending...'}
