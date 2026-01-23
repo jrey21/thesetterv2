@@ -1,14 +1,5 @@
-'use client';
-import { MessageSquare } from 'lucide-react';
+// The "Mochi-Style" Instagram Link
+const instagramLoginUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${process.env.NEXT_PUBLIC_META_APP_ID}&redirect_uri=${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback&response_type=code&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish`;
 
-export default function DashboardHome() {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
-      <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-4">
-        <MessageSquare size={32} className="text-blue-500"/>
-      </div>
-      <h3 className="text-gray-900 font-medium mb-1">Your Inbox</h3>
-      <p className="text-sm">Select a conversation to start chatting.</p>
-    </div>
-  );
-}
+// Use this URL in your button:
+// <a href={instagramLoginUrl}>Connect Instagram</a>
